@@ -901,7 +901,7 @@ public class MessageListener extends ListenerAdapter {
                         } catch (InterruptedException e) {
                             e.printStackTrace();
                         }
-                        Bot.api.getUserById(reminder.Id).openPrivateChannel().queue((channel) -> channel.sendMessage("Remind: " + reminder.getMessage()).queue());
+                        reminder.getUser().openPrivateChannel().queue((channel) -> channel.sendMessage("Remind: " + reminder.getMessage()).queue());
                         reminds.remove(reminder);
                         try {
                             saveRemind();
@@ -911,7 +911,7 @@ public class MessageListener extends ListenerAdapter {
 
                     }).start();
                 } else {
-                    Bot.api.getUserById(reminder.Id).openPrivateChannel().queue((channel) -> channel.sendMessage("Remind: " + reminder.getMessage()).queue());
+                    reminder.getUser().openPrivateChannel().queue((channel) -> channel.sendMessage("Remind: " + reminder.getMessage()).queue());
                     reminds.remove(reminder);
                     try {
                         saveRemind();
