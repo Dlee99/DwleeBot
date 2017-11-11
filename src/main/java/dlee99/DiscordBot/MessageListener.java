@@ -69,6 +69,8 @@ public class MessageListener extends ListenerAdapter {
                     } catch (Exception e) {
                         channel.sendMessage("That is an invalid input.").queue();
                     }
+                } else if (message.toLowerCase().startsWith(".chess")) {
+                    chess(message, channel, author);
                 } else if (message.toLowerCase().startsWith(".help")) {
                     send(
                             "```.dice n m``` to roll *n* many dice with *m* many sides." +
@@ -921,6 +923,10 @@ public class MessageListener extends ListenerAdapter {
                 }
             }
         }
+    }
+
+    public void chess(String message, MessageChannel channel, User author){
+
     }
 }
 
