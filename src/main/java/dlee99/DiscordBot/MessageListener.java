@@ -1,10 +1,15 @@
 package dlee99.DiscordBot;
 
+import net.dv8tion.jda.core.MessageBuilder;
+import net.dv8tion.jda.core.entities.Message;
 import net.dv8tion.jda.core.entities.MessageChannel;
 import net.dv8tion.jda.core.entities.User;
 import net.dv8tion.jda.core.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.core.hooks.ListenerAdapter;
 
+import javax.imageio.ImageIO;
+import java.awt.*;
+import java.awt.image.BufferedImage;
 import java.io.*;
 import java.net.URL;
 import java.text.ParseException;
@@ -17,20 +22,22 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class MessageListener extends ListenerAdapter {
-    ArrayList<UserObject> userArrayList = getUserArrayList();
+    ArrayList<Conversation> convoArrayList = getConvoArrayList();
     public static ArrayList<Remind> reminds;
-
     public MessageListener() throws IOException, ClassNotFoundException {
     }
 
     @Override
     public void onMessageReceived(MessageReceivedEvent event) {
+
         new Thread(() -> {
             String message = event.getMessage().getRawContent();
             MessageChannel channel = event.getChannel();
             User author = event.getAuthor();
-
             if (!author.isBot()) {
+                if(event.getGuild() != null && event.getGuild().getId().equals(Bot.channelID)){
+                    colorChannel(message, channel, author, event);
+                }
                 if (message.toLowerCase().startsWith(".dice")) {
                     dice(message, channel);
                 } else if (message.toLowerCase().startsWith(".quote")) {
@@ -55,22 +62,30 @@ public class MessageListener extends ListenerAdapter {
                     } catch (IOException e) {
                         e.printStackTrace();
                     }
-                } else if (message.toLowerCase().startsWith(".gpa")){
+                } else if (message.toLowerCase().startsWith(".gpa")) {
                     gpa(message, channel);
-                } else if (message.toLowerCase().startsWith(".reminddate") && !author.isBot()) {
+                } else if (message.toLowerCase().startsWith(".reminddate") && ! author.isBot()) {
                     try {
                         remindDate(message, channel, author);
                     } catch (IOException e) {
                         e.printStackTrace();
                     }
-                } else if (message.toLowerCase().startsWith(".remindme") && !author.isBot()) {
+                } else if (message.toLowerCase().startsWith(".remindme") && ! author.isBot()) {
                     try {
                         remindMe(message, channel, author);
                     } catch (Exception e) {
                         channel.sendMessage("That is an invalid input.").queue();
                     }
+                } else if (message.toLowerCase().startsWith(".terminate") && ! author.isBot()) {
+                    terminateConvo(message, channel, author);
+                } else if (message.toLowerCase().startsWith(".getconvos")) {
+                    getConvos(message, channel, author);
                 } else if (message.toLowerCase().startsWith(".chess")) {
                     chess(message, channel, author);
+                } else if (message.toLowerCase().startsWith(".ping")) {
+                    channel.sendMessage("The ping time is " + Long.toString(Bot.api.getPing()) + "ms").queue();
+                } else if(message.toLowerCase().startsWith(".color")){
+                    colorText(message, channel, author);
                 } else if (message.toLowerCase().startsWith(".help")) {
                     send(
                             "```.dice n m``` to roll *n* many dice with *m* many sides." +
@@ -79,9 +94,13 @@ public class MessageListener extends ListenerAdapter {
                                     "```.message username {This is a message...}``` to send an anonymous message to this user." +
                                     "```.messageID userID {This is a message...}``` to send an anonymous message to the user with the specified ID." +
                                     "```.messageReply # {This is a message...}``` to send a reply to a user who sent you a message. The reply # is the one in parentheses." +
+                                    "```.terminate convoID``` to end a conversation you created." +
+                                    "```.getConvos``` to get a list of conversations you own." +
                                     "```.remindme h {This is a message...}``` to remind yourself in *h* hours of a message." +
                                     "```.remindDate yyyy:MM:dd:hh:mm {This is a message...}``` to remind yourself at a specified date." +
-                                    "```.gpa LetterGrade1 Type(Prep/Honors/AP)1 LetterGrade2 Type2...``` to calculate your GPA."
+                                    "```.gpa LetterGrade1 Type(Prep/Honors/AP)1 LetterGrade2 Type2...``` to calculate your GPA." +
+                                    "```.color {This is a message...}``` to get a colored image of the text."
+
 
                             , channel);
 
@@ -92,7 +111,7 @@ public class MessageListener extends ListenerAdapter {
 
     public int ordinalIndexOf(String str, String substr, int n) {
         int pos = str.indexOf(substr);
-        while (--n > 0 && pos != -1)
+        while (-- n > 0 && pos != - 1)
             pos = str.indexOf(substr, pos + 1);
         return pos;
     }
@@ -563,7 +582,7 @@ public class MessageListener extends ListenerAdapter {
                 int pos2 = quote.substring(pos).indexOf(";") + pos + 1;
                 quote = quote.substring(0, pos) + quote.substring(pos2);
             }
-            if (!quote.equals("Modern typographic axioms:")) {
+            if (! quote.equals("Modern typographic axioms:")) {
                 channel.sendMessage("\"" + quote + "\" -" + qauthor).queue();
             } else if (quote.equals("Modern typographic axioms:")) {
                 channel.sendMessage("\"Tell me and I forget. Teach me and I remember. Involve me and I learn.\" -Benjamin Franklin").queue();
@@ -575,6 +594,7 @@ public class MessageListener extends ListenerAdapter {
 
     public void dice(String message, MessageChannel channel) {
         int n, m;
+
         String[] args = message.split(" ");
         if (args.length > 1) {
             try {
@@ -625,23 +645,20 @@ public class MessageListener extends ListenerAdapter {
             String send = message.substring(8 + u.length() + 1);
             // openPrivateChannel provides a RestAction<PrivateChannel>
             // which means it supplies you with the resulting channel
-            for (int i = 0; i < users.size(); i++) {
-
-                users.get(i).openPrivateChannel().queue((channel) ->
-                {
-                    // value is a parameter for the `accept(T channel)` method of our callback.
-                    // here we implement the body of that method, which will be called later by JDA automatically.
-                    channel.sendMessage(send + " (" + (addUser(user)) + ")").queue();
-                    // here we access the enclosing scope variable -content-
-                    // which was provided to sendPrivateMessage(User, String) as a parameter
-                });
-            }
+            users.get(0).openPrivateChannel().queue((channel) ->
+            {
+                // value is a parameter for the `accept(T channel)` method of our callback.
+                // here we implement the body of that method, which will be called later by JDA automatically.
+                channel.sendMessage(send + " (" + (addConvo(new Conversation(user, users.get(0)))) + ")").queue();
+                // here we access the enclosing scope variable -content-
+                // which was provided to sendPrivateMessage(User, String) as a parameter
+            });
             chan.sendMessage("Message was successfully sent to " + u + ".").queue();
         } catch (Exception e) {
             chan.sendMessage("That is not a valid input.").queue();
         }
-        ObjectOutputStream objectOutputStream = new ObjectOutputStream(new FileOutputStream("users.ser"));
-        objectOutputStream.writeObject(userArrayList);
+        ObjectOutputStream objectOutputStream = new ObjectOutputStream(new FileOutputStream("convos.ser"));
+        objectOutputStream.writeObject(convoArrayList);
         objectOutputStream.flush();
         objectOutputStream.close();
 
@@ -657,20 +674,21 @@ public class MessageListener extends ListenerAdapter {
             String send = message.substring(10 + u.length() + 1);
             // openPrivateChannel provides a RestAction<PrivateChannel>
             // which means it supplies you with the resulting channel
+            int convoID = (addConvo(new Conversation(user2, user)));
             user.openPrivateChannel().queue((channel) ->
             {
-                // value is a parameter for the `accept(T channel)` method of our callback.
-                // here we implement the body of that method, which will be called later by JDA automatically.
-                channel.sendMessage(send + " (" + (addUser(user2)) + ")").queue();
+                // value is a parameter for the `acceptethod, which will be called later by JDA automatically.
+                channel.sendMessage(send + " (" + convoID + ")").queue();
                 // here we access the enclosing scope variable -content-
                 // which was provided to sendPrivateMessage(User, String) as a parameter
             });
-            chan.sendMessage("Message was successfully sent to " + user.getName()).queue();
+            chan.sendMessage("Message was successfully sent to " + user.getName() + " (" + convoID + ")").queue();
         } catch (Exception e) {
             chan.sendMessage("That is not a valid input.").queue();
         }
-        ObjectOutputStream objectOutputStream = new ObjectOutputStream(new FileOutputStream("users.ser"));
-        objectOutputStream.writeObject(userArrayList);
+
+        ObjectOutputStream objectOutputStream = new ObjectOutputStream(new FileOutputStream("convos.ser"));
+        objectOutputStream.writeObject(convoArrayList);
         objectOutputStream.flush();
         objectOutputStream.close();
 
@@ -681,51 +699,100 @@ public class MessageListener extends ListenerAdapter {
         //userArrayList.add(new UserObject(user.getId()));
         try {
             String u = args[1];
-            User recipient = userArrayList.get(Integer.parseInt(u)).getUser();
+            Conversation conversation = convoArrayList.get(Integer.parseInt(u));
             String send = message.substring(13 + u.length() + 1);
             // openPrivateChannel provides a RestAction<PrivateChannel>
             // which means it supplies you with the resulting channel
-            recipient.openPrivateChannel().queue((channel) ->
-            {
-                // value is a parameter for the `accept(T channel)` method of our callback.
-                // here we implement the body of that method, which will be called later by JDA automatically.
-                channel.sendMessage(send + " (" + (addUser(user)) + ")").queue();
-                // here we access the enclosing scope variable -content-
-                // which was provided to sendPrivateMessage(User, String) as a parameter
-            });
-            chan.sendMessage("Message was successfully sent.").queue();
+            User recipient;
+            if (user.getId().equals(conversation.user1)) {
+                recipient = Bot.api.getUserById(conversation.user2);
+                recipient.openPrivateChannel().queue((channel) ->
+                {
+                    // value is a parameter for the `accept(T channel)` method of our callback.
+                    // here we implement the body of that method, which will be called later by JDA automatically.
+                    channel.sendMessage(send + " (" + Integer.parseInt(u) + ")").queue();
+                    // here we access the enclosing scope variable -content-
+                    // which was provided to sendPrivateMessage(User, String) as a parameter
+                });
+            } else {
+                recipient = Bot.api.getUserById(conversation.user1);
+                recipient.openPrivateChannel().queue((channel) ->
+                {
+                    // value is a parameter for the `accept(T channel)` method of our callback.
+                    // here we implement the body of that method, which will be called later by JDA automatically.
+                    channel.sendMessage(Bot.api.getUserById(conversation.user2).getName() + ": " + send + " (" + Integer.parseInt(u) + ")").queue();
+                    // here we access the enclosing scope variable -content-
+                    // which was provided to sendPrivateMessage(User, String) as a parameter
+                });
+            }
+            chan.sendMessage("Message was successfully sent to " + recipient.getName() + ".").queue();
         } catch (Exception e) {
             chan.sendMessage("That is not a valid input.").queue();
         }
-        ObjectOutputStream objectOutputStream = new ObjectOutputStream(new FileOutputStream("users.ser"));
-        objectOutputStream.writeObject(userArrayList);
-        objectOutputStream.flush();
-        objectOutputStream.close();
     }
 
-    public ArrayList<UserObject> getUserArrayList() throws IOException, ClassNotFoundException {
+    public ArrayList<Conversation> getConvoArrayList() throws IOException, ClassNotFoundException {
         try {
-            ObjectInputStream objectInputStream = new ObjectInputStream(new FileInputStream("users.ser"));
-            return (ArrayList<UserObject>) objectInputStream.readObject();
+            ObjectInputStream objectInputStream = new ObjectInputStream(new FileInputStream("convos.ser"));
+            return (ArrayList<Conversation>) objectInputStream.readObject();
         } catch (java.io.FileNotFoundException e) {
             return new ArrayList();
         }
     }
 
-    public int addUser(User user) {
-        if (userArrayList.size() > 1000) {
+    public void terminateConvo(String message, MessageChannel chan, User user) {
+        String[] args = message.split(" ");
+        int convoID = Integer.parseInt(args[1]);
+        if (convoArrayList.get(convoID).user1.equals(user.getId())) {
+            chan.sendMessage("Conversation successfully terminated.");
+            convoArrayList.set(convoID, new Conversation(true));
+        } else {
+            chan.sendMessage("You do not own that conversation.");
+        }
+    }
+
+    public int addConvo(Conversation conversation) {
+        if (convoArrayList.size() > 1000) {
             int j = 0;
             for (int i = 0; i < 1000; i++) {
-                if (userArrayList.get(i).getDate()
-                        .before(userArrayList.get(j).getDate())) {
+                if (convoArrayList.get(i).fake) {
+                    j = i;
+                    break;
+                } else if (convoArrayList.get(i).getDate()
+                        .before(convoArrayList.get(j).getDate())) {
                     j = i;
                 }
             }
-            userArrayList.set(j, new UserObject(user.getId()));
+            convoArrayList.set(j, conversation);
             return j;
         } else {
-            userArrayList.add(new UserObject(user.getId()));
-            return userArrayList.size() - 1;
+            convoArrayList.add(conversation);
+            return convoArrayList.size() - 1;
+        }
+    }
+
+    public void getConvos(String message, MessageChannel chan, User user) {
+        String s = "";
+        for (int i = 0; i < convoArrayList.size(); i++) {
+            if (convoArrayList.get(i).user1.equals(user.getId())) {
+                s += i + ".\t" + convoArrayList.get(i) + "\n";
+
+            }
+        }
+        String list[] = new String[(s.length() / 2000) + 1];
+        int i = 0;
+        while (s.length() > 2000) {
+            list[i] = s.substring(0, 2000);
+            i++;
+            s = s.substring(2000);
+        }
+        list[i] = s;
+        for (int j = 0; j < list.length; j++) {
+            int a = j;
+            user.openPrivateChannel().queue((channel) ->
+            {
+                channel.sendMessage(list[a]).queue();
+            });
         }
     }
 
@@ -739,16 +806,16 @@ public class MessageListener extends ListenerAdapter {
         return gcd(b, a % b);
     }
 
-    public void gpa(String message, MessageChannel channel){
+    public void gpa(String message, MessageChannel channel) {
         String[] args = message.split(" ");
         double total = 0;
         for (int i = 1; i < args.length; i += 2) {
             total += grade(args[i].trim()) * level(args[i + 1].trim());
         }
-        channel.sendMessage("The calculated GPA is: " + Math.round((total / ((args.length -  1) / 2)) * 1000.0) / 1000.0).queue();
+        channel.sendMessage("The calculated GPA is: " + Math.round((total / ((args.length - 1) / 2)) * 1000.0) / 1000.0).queue();
     }
 
-    public static double level(String s){
+    public static double level(String s) {
         String s1 = s.toLowerCase();
         if (s1.equals("prep")) {
             return 1;
@@ -764,32 +831,32 @@ public class MessageListener extends ListenerAdapter {
         }
     }
 
-    public static double grade(String s){
+    public static double grade(String s) {
         String s1 = s.toLowerCase();
         if (s1.equals("d-")) {
-            return .67;
+            return .7;
         } else if (s1.equals("d")) {
             return 1;
         } else if (s1.equals("d+")) {
-            return 1.33;
+            return 1.3;
         } else if (s1.equals("c-")) {
-            return 1.67;
+            return 1.7;
         } else if (s1.equals("c")) {
             return 2;
         } else if (s1.equals("c+")) {
-            return 2.33;
+            return 2.3;
         } else if (s1.equals("b-")) {
-            return 2.67;
+            return 2.7;
         } else if (s1.equals("b")) {
             return 3;
         } else if (s1.equals("b+")) {
-            return 3.33;
+            return 3.3;
         } else if (s1.equals("a-")) {
-            return 3.67;
+            return 3.7;
         } else if (s1.equals("a")) {
             return 4;
         } else if (s1.equals("a+")) {
-            return 4.33;
+            return 4.3;
         } else {
             return 3;
         }
@@ -843,53 +910,51 @@ public class MessageListener extends ListenerAdapter {
         double wait = date.getTime() - new Date().getTime();
         double number = 3600000;
 
-        if(wait >= 0.0) {
+        if (wait >= 0.0) {
             chan.sendMessage("You will be reminded in " + Math.round(wait / number) + " hours.").queue();
             try {
-                Thread.sleep((long)wait);
+                Thread.sleep((long) wait);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
-        }
-        else{
+        } else {
             chan.sendMessage("That is not a valid input, you must input a date in the future.").queue();
         }
 
         reminds.remove(thisRemind);
         saveRemind();
 
-        if(wait > 0) {
+        if (wait > 0) {
             user.openPrivateChannel().queue((channel) -> channel.sendMessage("Remind: " + remind).queue());
         }
 
     }
 
 
-    public static ArrayList<Remind> getReminds() throws Exception{
+    public static ArrayList<Remind> getReminds() throws Exception {
         try {
             ObjectInputStream objectInputStream = new ObjectInputStream(new FileInputStream("remind.ser"));
             return (ArrayList<Remind>) objectInputStream.readObject();
-        }
-        catch(FileNotFoundException e){
+        } catch (FileNotFoundException e) {
             return new ArrayList();
         }
 
     }
 
-    public static void saveRemind()throws IOException {
+    public static void saveRemind() throws IOException {
         ObjectOutputStream objectOutputStream = new ObjectOutputStream(new FileOutputStream("remind.ser"));
         objectOutputStream.writeObject(reminds);
         objectOutputStream.flush();
         objectOutputStream.close();
     }
 
-    public static void initializeRemindArray() {
+    public static void initialize() {
         try {
             reminds = getReminds();
         } catch (Exception e) {
             e.printStackTrace();
         }
-        if (!reminds.isEmpty()) {
+        if (! reminds.isEmpty()) {
             Remind[] list = new Remind[reminds.size()];
             for (int i = 0; i < reminds.size(); i++) {
                 list[i] = reminds.get(i);
@@ -925,8 +990,257 @@ public class MessageListener extends ListenerAdapter {
         }
     }
 
-    public void chess(String message, MessageChannel channel, User author){
+    public void chess(String message, MessageChannel channel, User author) {
 
     }
-}
 
+    public static void colorText(String message, MessageChannel channel, User author) {
+        String text = message.substring(6);
+
+        BufferedImage img = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g2d = img.createGraphics();
+
+        int maxLine = 0;
+        ArrayList<String> lines = new ArrayList();
+        /*for (int i = 0; i < text.length(); i += 20) {
+            int endSubstring = (i + 20 > text.length()) ? text.length() : i + 20;
+            if(maxLine < fm.stringWidth(text.substring(i, endSubstring))){
+                maxLine = fm.stringWidth(text.substring(i, endSubstring));
+            }
+
+        }*/
+        int position = 0;
+        int j2 = 0;
+        boolean notDone1 = true;
+        int cpl = (20 >= (text.length() / Math.ceil((Math.sqrt(text.length() * 0.05))))) ? 20 : (int) (text.length() / Math.ceil((Math.sqrt(text.length() * 0.05)))); // Character per line
+        while(notDone1) {
+            while(text.substring(position, position + 1).equals(" ")){
+                position++;
+                if(position == text.length()){
+                    notDone1 = false;
+                    break;
+                }
+            }
+            boolean notDone2 = true;
+            for (int j = 0; notDone2 && notDone1 ; j++) {
+                if (text.length() <= position + cpl + 1 + j) {
+                    lines.add(text.substring(position));
+                    notDone1 = false;
+                }
+                else if (text.substring(position + cpl + j, position + cpl + 1 + j).equals(" ")) {
+                    lines.add(text.substring(position, position + cpl + 1 + j));
+                    notDone2 = false;
+                }
+                j2 = j;
+            }
+            position = position + cpl + 1 + j2;
+        }
+        int numberOfLines = lines.size();
+        Font font = new Font("Comic Sans MS", Font.PLAIN, 48);
+        g2d.setFont(font);
+        FontMetrics fm = g2d.getFontMetrics();
+        for (int i = 0; i < lines.size(); i++) {
+            if(maxLine <= fm.stringWidth(lines.get(i))){
+                maxLine = fm.stringWidth(lines.get(i));
+            }
+        }
+        int width = maxLine;
+
+        int height = fm.getHeight() * numberOfLines;
+        g2d.dispose();
+
+        img = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+        g2d = img.createGraphics();
+        g2d.setRenderingHint(RenderingHints.KEY_ALPHA_INTERPOLATION, RenderingHints.VALUE_ALPHA_INTERPOLATION_QUALITY);
+        g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2d.setRenderingHint(RenderingHints.KEY_COLOR_RENDERING, RenderingHints.VALUE_COLOR_RENDER_QUALITY);
+        g2d.setRenderingHint(RenderingHints.KEY_DITHERING, RenderingHints.VALUE_DITHER_ENABLE);
+        g2d.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON);
+        g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+        g2d.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
+        g2d.setFont(font);
+        fm = g2d.getFontMetrics();
+        int xSum = 0;
+        int ySum = fm.getAscent();
+        for (int j = 0; j < lines.size(); j++){
+            for (int i = 0; i < lines.get(j).length(); i++) {
+                String line = lines.get(j);
+
+                if (equalsAny(line.substring(i, i + 1), new String[]{"a", "g", "m", "s", "y"})) {
+                    g2d.setColor(Color.RED);
+                } else if (equalsAny(line.substring(i, i + 1), new String[]{"b", "h", "n", "t", "z"})) {
+                    g2d.setColor(new Color(255, 140, 0));
+                } else if (equalsAny(line.substring(i, i + 1), new String[]{"c", "i", "o", "u"})) {
+                    g2d.setColor(Color.YELLOW);
+                } else if (equalsAny(line.substring(i, i + 1), new String[]{"d", "j", "p", "v"})) {
+                    g2d.setColor(Color.GREEN);
+                } else if (equalsAny(line.substring(i, i + 1), new String[]{"e", "k", "q", "w"})) {
+                    g2d.setColor(Color.BLUE);
+                } else if (equalsAny(line.substring(i, i + 1), new String[]{"f", "l", "r", "x"})) {
+                    g2d.setColor(new Color(75, 0, 130));
+                    //g2d.setColor(Color.magenta);
+                } else {
+                    g2d.setColor(Color.WHITE);
+                }
+                g2d.drawString(lines.get(j).substring(i, i + 1), xSum, ySum);
+                xSum = xSum + fm.stringWidth(lines.get(j).substring(i, i + 1));
+            }
+            xSum = 0;
+            ySum += fm.getAscent();
+        }
+            /*if(!(xSum == 0 && text.substring(i, i + 1).equals(" "))) {
+                g2d.drawString(text.substring(i, i + 1), xSum, ySum);
+                xSum = xSum + fm.stringWidth(text.substring(i, i + 1));
+                if((i + 1) % 20 == 0){
+                    xSum = 0;
+                    ySum = ySum + fm.getHeight();
+                }
+            }
+            else{
+                text = text.substring(0, i) + text.substring(i+1);
+                i = i - 1;
+            }*/
+
+
+
+        g2d.dispose();
+        try {
+            ImageIO.write(img, "png", new File("Text.png"));
+        } catch (IOException ex) {
+            ex.printStackTrace();
+        }
+        Message msg = new MessageBuilder().append(author.getName() + " said:").build();
+        channel.sendFile(new File("Text.png"), msg).queue();
+    }
+    public static void colorChannel(String message, MessageChannel channel, User author, MessageReceivedEvent event) {
+        String text = message;
+        text = text.replaceAll("]","");
+        if(!(message.toLowerCase().startsWith("http") || message.toLowerCase().contains(".com") || message.toLowerCase().contains("www."))) {
+
+            System.out.println(text);
+            BufferedImage img = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g2d = img.createGraphics();
+            Font font = new Font("Arial", Font.PLAIN, 48);
+            g2d.setFont(font);
+            FontMetrics fm = g2d.getFontMetrics();
+            int maxLine = 0;
+            ArrayList<String> lines = new ArrayList();
+        /*for (int i = 0; i < text.length(); i += 20) {
+            int endSubstring = (i + 20 > text.length()) ? text.length() : i + 20;
+            if(maxLine < fm.stringWidth(text.substring(i, endSubstring))){
+                maxLine = fm.stringWidth(text.substring(i, endSubstring));
+            }
+
+        }*/
+            int position = 0;
+            int j2 = 0;
+            boolean notDone1 = true;
+            while (notDone1) {
+                while (text.substring(position, position + 1).equals(" ")) {
+                    position++;
+                    if (position == text.length()) {
+                        notDone1 = false;
+                        break;
+                    }
+                }
+                boolean notDone2 = true;
+                for (int j = 0; notDone2 && notDone1; j++) {
+                    if (text.length() <= position + 21 + j) {
+                        lines.add(text.substring(position));
+                        notDone1 = false;
+                    } else if (text.substring(position + 20 + j, position + 21 + j).equals(" ")) {
+                        lines.add(text.substring(position, position + 21 + j));
+                        notDone2 = false;
+                    }
+                    j2 = j;
+                }
+                position = position + 21 + j2;
+            }
+            for (int i = 0; i < lines.size(); i++) {
+                if (maxLine <= fm.stringWidth(lines.get(i))) {
+                    maxLine = fm.stringWidth(lines.get(i));
+                }
+            }
+            int width = maxLine;
+            int numberOfLines = lines.size();
+            int height = fm.getHeight() * numberOfLines;
+            g2d.dispose();
+
+            img = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+            g2d = img.createGraphics();
+            g2d.setRenderingHint(RenderingHints.KEY_ALPHA_INTERPOLATION, RenderingHints.VALUE_ALPHA_INTERPOLATION_QUALITY);
+            g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2d.setRenderingHint(RenderingHints.KEY_COLOR_RENDERING, RenderingHints.VALUE_COLOR_RENDER_QUALITY);
+            g2d.setRenderingHint(RenderingHints.KEY_DITHERING, RenderingHints.VALUE_DITHER_ENABLE);
+            g2d.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON);
+            g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            g2d.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
+            g2d.setFont(font);
+            fm = g2d.getFontMetrics();
+            int xSum = 0;
+            int ySum = fm.getAscent();
+            for (int j = 0; j < lines.size(); j++) {
+
+
+                for (int i = 0; i < lines.get(j).length(); i++) {
+                    String line = lines.get(j);
+                    if (equalsAny(line.substring(i, i + 1), new String[]{"a", "g", "m", "s", "y"})) {
+                        g2d.setColor(Color.RED);
+                    } else if (equalsAny(line.substring(i, i + 1), new String[]{"b", "h", "n", "t", "z"})) {
+                        g2d.setColor(new Color(255, 140, 0));
+                    } else if (equalsAny(line.substring(i, i + 1), new String[]{"c", "i", "o", "u"})) {
+                        g2d.setColor(Color.YELLOW);
+                    } else if (equalsAny(line.substring(i, i + 1), new String[]{"d", "j", "p", "v"})) {
+                        g2d.setColor(Color.GREEN);
+                    } else if (equalsAny(line.substring(i, i + 1), new String[]{"e", "k", "q", "w"})) {
+                        g2d.setColor(Color.BLUE);
+                    } else if (equalsAny(line.substring(i, i + 1), new String[]{"f", "l", "r", "x"})) {
+                        g2d.setColor(new Color(75, 0, 130));
+                        //g2d.setColor(Color.magenta);
+                    } else {
+                        g2d.setColor(Color.WHITE);
+                    }
+                    g2d.drawString(lines.get(j).substring(i, i + 1), xSum, ySum);
+                    xSum = xSum + fm.stringWidth(lines.get(j).substring(i, i + 1));
+                }
+                xSum = 0;
+                ySum += fm.getAscent();
+            }
+            /*if(!(xSum == 0 && text.substring(i, i + 1).equals(" "))) {
+                g2d.drawString(text.substring(i, i + 1), xSum, ySum);
+                xSum = xSum + fm.stringWidth(text.substring(i, i + 1));
+                if((i + 1) % 20 == 0){
+                    xSum = 0;
+                    ySum = ySum + fm.getHeight();
+                }
+            }
+            else{
+                text = text.substring(0, i) + text.substring(i+1);
+                i = i - 1;
+            }*/
+
+
+            g2d.dispose();
+            try {
+                ImageIO.write(img, "png", new File("Text.png"));
+            } catch (IOException ex) {
+                ex.printStackTrace();
+            }
+            Message msg = new MessageBuilder().append(author.getName() + " said:").build();
+            channel.sendFile(new File("Text.png"), msg).queue();
+            event.getMessage().delete().queue();
+        }
+
+    }
+
+    public static boolean equalsAny(String a, String[] letters) {
+        for (int i = 0; i < letters.length; i++) {
+            if (a.equalsIgnoreCase(letters[i])) {
+                return true;
+            }
+        }
+        return false;
+    }
+}
