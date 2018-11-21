@@ -1,17 +1,30 @@
 package dlee99.DiscordBot;
 
+import com.sedmelluq.discord.lavaplayer.player.AudioLoadResultHandler;
+import com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager;
+import com.sedmelluq.discord.lavaplayer.player.DefaultAudioPlayerManager;
+import com.sedmelluq.discord.lavaplayer.player.event.AudioEvent;
+import com.sedmelluq.discord.lavaplayer.player.event.AudioEventListener;
+import com.sedmelluq.discord.lavaplayer.source.AudioSourceManager;
+import com.sedmelluq.discord.lavaplayer.source.AudioSourceManagers;
+import com.sedmelluq.discord.lavaplayer.source.youtube.YoutubeAudioSourceManager;
+import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
+import com.sedmelluq.discord.lavaplayer.track.*;
+import net.dv8tion.jda.core.EmbedBuilder;
 import net.dv8tion.jda.core.MessageBuilder;
-import net.dv8tion.jda.core.entities.Message;
-import net.dv8tion.jda.core.entities.MessageChannel;
-import net.dv8tion.jda.core.entities.User;
+import net.dv8tion.jda.core.audio.AudioSendHandler;
+import net.dv8tion.jda.core.entities.*;
 import net.dv8tion.jda.core.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.core.hooks.ListenerAdapter;
+import net.dv8tion.jda.core.managers.AudioManager;
+import sun.audio.AudioPlayer;
 
 import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.*;
 import java.net.URL;
+import java.text.DateFormatSymbols;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -34,14 +47,24 @@ public class MessageListener extends ListenerAdapter {
             String message = event.getMessage().getRawContent();
             MessageChannel channel = event.getChannel();
             User author = event.getAuthor();
+            Guild server = event.getGuild();
+            if(author.isBot() && message.startsWith("Now voting on... ")){
+                Message voteMessage = event.getMessage();
+                voteMessage.addReaction("\u2705").queue();
+                voteMessage.addReaction("\u274E").queue();
+                voteMessage.addReaction("\uD83C\uDDE8\uD83C\uDDED").queue();
+            }
             if (!author.isBot()) {
-                if(event.getGuild() != null && event.getGuild().getId().equals(Bot.channelID)){
+                /*if(event.getGuild() != null && event.getGuild().getId().equals(Bot.channelID)){
                     colorChannel(message, channel, author, event);
-                }
+                }*/
                 if (message.toLowerCase().startsWith(".dice")) {
                     dice(message, channel);
                 } else if (message.toLowerCase().startsWith(".quote")) {
                     quote(channel);
+                } else if(message.toLowerCase().startsWith(".formatquote")) {
+                    event.getMessage().delete().queue();
+                    formatQuote(author, message, channel);
                 } else if (message.toLowerCase().startsWith(".bconv")) {
                     bconv(message, channel);
                 } else if (message.toLowerCase().startsWith(".messageid")) {
@@ -76,16 +99,37 @@ public class MessageListener extends ListenerAdapter {
                     } catch (Exception e) {
                         channel.sendMessage("That is an invalid input.").queue();
                     }
+                } else if (message.toLowerCase().startsWith(".youtubemessageid")){
+                    youtubeMessageID(message);
                 } else if (message.toLowerCase().startsWith(".terminate") && ! author.isBot()) {
                     terminateConvo(message, channel, author);
                 } else if (message.toLowerCase().startsWith(".getconvos")) {
                     getConvos(message, channel, author);
                 } else if (message.toLowerCase().startsWith(".chess")) {
                     chess(message, channel, author);
+                } else if(message.toLowerCase().startsWith(".pingchannel")){
+                    pingChannel(message, channel, author, server);
                 } else if (message.toLowerCase().startsWith(".ping")) {
                     channel.sendMessage("The ping time is " + Long.toString(Bot.api.getPing()) + "ms").queue();
+                } else if(message.toLowerCase().startsWith(".join")){
+                    join(author, server);
                 } else if(message.toLowerCase().startsWith(".color")){
                     colorText(message, channel, author);
+                } else if(message.toLowerCase().startsWith(".initiatevotemember")){
+                    Role innerCircle = server.getRolesByName("Inner Circle", false).get(0);
+                    List<Member> people = server.getMembersWithRoles(innerCircle);
+                    if(people.contains(server.getMember(author))) {
+                        Role NSDAP = server.getRolesByName("NSDAP", true).get(0);
+                        initiateVote(message + " " + NSDAP.getAsMention(), event);
+                    }
+                } else if(message.toLowerCase().startsWith(".initiatevote")){
+                    initiateVote(message, event);
+                } else if(message.toLowerCase().startsWith(".cleartextchannel")){
+                    Role highCommand = server.getRolesByName("Inner Circle", false).get(0);
+                    List<Member> people = server.getMembersWithRoles(highCommand);
+                    if(people.contains(server.getMember(author))) {
+                        clearTextChannel(event.getTextChannel());
+                    }
                 } else if (message.toLowerCase().startsWith(".help")) {
                     send(
                             "```.dice n m``` to roll *n* many dice with *m* many sides." +
@@ -99,14 +143,53 @@ public class MessageListener extends ListenerAdapter {
                                     "```.remindme h {This is a message...}``` to remind yourself in *h* hours of a message." +
                                     "```.remindDate yyyy:MM:dd:hh:mm {This is a message...}``` to remind yourself at a specified date." +
                                     "```.gpa LetterGrade1 Type(Prep/Honors/AP)1 LetterGrade2 Type2...``` to calculate your GPA." +
-                                    "```.color {This is a message...}``` to get a colored image of the text."
-
-
+                                    "```.color {This is a message...}``` to get a colored image of the text." +
+                                    "```.pingChannel {Channel name} to ping every user in a voice channel.```"
                             , channel);
 
                 }
             }
         }).start();
+    }
+
+    private void formatQuote(User author, String message, MessageChannel channel) {
+        String[] args = message.split(" ");
+        //<quote> <author> <date> <time>
+        String quoteBody = "";
+        String authorOfQuote = args[args.length - 3];
+        String[] date = args[args.length - 2].split("/");
+        String month = "";
+        String day = "";
+        String year = "";
+        if (! date[0].equals("0")) {
+            month = date[0];
+            month = new DateFormatSymbols().getMonths()[Integer.parseInt(month) - 1];
+            day = date[1] + ", ";
+            year = date[2];
+        }
+        String time = "";
+        if (! args[args.length - 1].equals("0")) {
+            time = " (" + args[args.length - 1] + ")";
+        }
+        for (int i = 1; i < args.length - 3; i++) {
+            if (i < args.length - 4) {
+                quoteBody += args[i] + " ";
+            } else {
+                quoteBody += args[i];
+            }
+        }
+        EmbedBuilder quoteEmbedBuilder = new EmbedBuilder();
+        quoteEmbedBuilder.setColor(new Color(255, 182, 193));
+        quoteEmbedBuilder.addField("\"" + quoteBody + "\"", "~ " + authorOfQuote.replaceAll("_",
+                " "), false);
+        quoteEmbedBuilder.setFooter(month + " " + day + year + time, null);
+        channel.sendMessage(quoteEmbedBuilder.build()).queue();
+
+
+    }
+
+    public void join(User author, Guild server) {
+        server.getMemberById(author.getIdLong()).getVoiceState().getChannel();
     }
 
     public int ordinalIndexOf(String str, String substr, int n) {
@@ -744,10 +827,10 @@ public class MessageListener extends ListenerAdapter {
         String[] args = message.split(" ");
         int convoID = Integer.parseInt(args[1]);
         if (convoArrayList.get(convoID).user1.equals(user.getId())) {
-            chan.sendMessage("Conversation successfully terminated.");
+            chan.sendMessage("Conversation successfully terminated.").queue();
             convoArrayList.set(convoID, new Conversation(true));
         } else {
-            chan.sendMessage("You do not own that conversation.");
+            chan.sendMessage("You do not own that conversation.").queue();
         }
     }
 
@@ -774,7 +857,7 @@ public class MessageListener extends ListenerAdapter {
     public void getConvos(String message, MessageChannel chan, User user) {
         String s = "";
         for (int i = 0; i < convoArrayList.size(); i++) {
-            if (convoArrayList.get(i).user1.equals(user.getId())) {
+            if (!convoArrayList.get(i).fake && convoArrayList.get(i).user1.equals(user.getId())) {
                 s += i + ".\t" + convoArrayList.get(i) + "\n";
 
             }
@@ -929,7 +1012,6 @@ public class MessageListener extends ListenerAdapter {
         }
 
     }
-
 
     public static ArrayList<Remind> getReminds() throws Exception {
         try {
@@ -1113,6 +1195,7 @@ public class MessageListener extends ListenerAdapter {
         Message msg = new MessageBuilder().append(author.getName() + " said:").build();
         channel.sendFile(new File("Text.png"), msg).queue();
     }
+
     public static void colorChannel(String message, MessageChannel channel, User author, MessageReceivedEvent event) {
         String text = message;
         text = text.replaceAll("]","");
@@ -1242,5 +1325,100 @@ public class MessageListener extends ListenerAdapter {
             }
         }
         return false;
+    }
+
+    public static void pingChannel(String message, MessageChannel channel, User author, Guild guild) {
+        String[] args = message.split(" ");
+        String name = "";
+        for (int i = 1; i < args.length; i++) {
+            name += args[i];
+            if (i < args.length - 1) {
+                name += " ";
+            }
+        }
+        VoiceChannel voiceChannel;
+        if (guild.getVoiceChannelsByName(name, true).size() != 0) {
+            voiceChannel = guild.getVoiceChannelsByName(name, true).get(0);
+        } else {
+            channel.sendMessage("Channel not found!").queue();
+            return;
+        }
+        List<Member> users = voiceChannel.getMembers();
+        String pingMessage = "";
+        if (users.size() == 0) {
+            channel.sendMessage("No one is in that channel!").queue();
+            return;
+        }
+        for (int i = 0; i < users.size(); i++) {
+            pingMessage += users.get(i).getAsMention() + " ";
+        }
+
+        channel.sendMessage(pingMessage).queue();
+        //youtubeVoiceMessage("AYnNGqSudpg", guild, voiceChannel);
+
+    }
+
+    public static void youtubeMessageID(String message) {
+        String args[] = message.split(" ");
+        Guild guild = Bot.api.getGuildById(args[1]);
+        VoiceChannel voiceChannel = Bot.api.getVoiceChannelById(args[2]);
+        String identifier = args[3];
+        youtubeVoiceMessage(identifier, guild, voiceChannel);
+    }
+    public static void youtubeVoiceMessage(String identifier, Guild guild, VoiceChannel voiceChannel){
+        AudioPlayerManager audioPlayerManager = new DefaultAudioPlayerManager();
+        com.sedmelluq.discord.lavaplayer.player.AudioPlayer audioPlayer = audioPlayerManager.createPlayer();
+        QueueListing queueListing = new QueueListing(audioPlayer, voiceChannel);
+        audioPlayer.addListener(queueListing);
+        AudioSourceManagers.registerRemoteSources(audioPlayerManager);
+        AudioSendHandlerAudioPlayer audioSendHandlerAudioPlayer = new AudioSendHandlerAudioPlayer(audioPlayer);
+        guild.getAudioManager().setSendingHandler(audioSendHandlerAudioPlayer);
+
+        audioPlayerManager.loadItemOrdered(guild, identifier, new AudioLoadResultHandler() {
+            @Override
+            public void trackLoaded(AudioTrack track) {
+                queueListing.onTrackStart(audioPlayer, track);
+                while(audioPlayer.getPlayingTrack() != null){
+
+                }
+                guild.getAudioManager().closeAudioConnection();
+                audioPlayer.destroy();
+            }
+
+            @Override
+            public void playlistLoaded(AudioPlaylist playlist) {
+
+            }
+
+            @Override
+            public void noMatches() {
+                System.out.println("Big no match");
+            }
+
+            @Override
+            public void loadFailed(FriendlyException exception) {
+                System.out.println("Big fail");
+            }
+        });
+
+    }
+    public static void initiateVote(String message, MessageReceivedEvent event){
+        String[] args = message.split(" ");
+        String personToVoteOn = "";
+        for (int i = 1; i < args.length; i++) {
+            personToVoteOn += args[i] + " ";
+        }
+        event.getMessage().delete().queue();
+        Message message1 = new MessageBuilder().append("Now voting on... **" + personToVoteOn + " **").build();
+        event.getTextChannel().sendMessage(message1).queue();
+    }
+    public static void clearTextChannel(TextChannel channel){
+        MessageHistory history = new MessageHistory(channel);
+        List<Message> msgs;
+        msgs = history.retrievePast(1).complete();
+        while(!msgs.isEmpty()){
+            msgs.get(0).delete().queue();
+            msgs = history.retrievePast(1).complete();
+        }
     }
 }
